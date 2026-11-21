@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Money Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFF0F6; --surface:#FFFFFF; --ink:#4A1B33; --muted:#8C5A74; --line:#F6D5E4;
+  --accent:#E0357F; --accent-ink:#FFFFFF; --warn:#B3261E; --set:#F7A8CB;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#24101B; --surface:#341A28; --ink:#FDE8F1; --muted:#D3A3BC; --line:#533048;
+    --accent:#FF7FB3; --accent-ink:#3A0A20; --warn:#FF8A7E; --set:#9C4B71; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#24101B; --surface:#341A28; --ink:#FDE8F1; --muted:#D3A3BC; --line:#533048;
+  --accent:#FF7FB3; --accent-ink:#3A0A20; --warn:#FF8A7E; --set:#9C4B71; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:18px;font-weight:500;margin:0 0 14px;color:var(--muted)}
+
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px}
+.hero .lbl{color:var(--muted);font-size:14px}
+.hero .big{font-size:44px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:2px 0 14px;font-variant-numeric:tabular-nums}
+.big.neg{color:var(--warn)}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)}
+.bar .left{background:var(--accent);transition:width .3s}
+.bar .set{background:var(--set);transition:width .3s}
+.legend{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:14px;font-variant-numeric:tabular-nums}
+.legend span{display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.alert{margin:12px 0 0;color:var(--warn);font-size:14px}
+
+.tabs{display:flex;gap:6px;margin:18px 0 14px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;padding:12px 0;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:inherit;font-weight:500;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+form{display:grid;grid-template-columns:1fr 110px;gap:8px}
+input{font:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:0}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.actions{grid-column:1/-1;display:flex;gap:8px}
+.btn{flex:1;padding:12px;border-radius:12px;border:0;font:inherit;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn.alt{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+
+ul{list-style:none;margin:16px 0 0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+li .name{flex:1;min-width:0;overflow-wrap:anywhere}
+li .amt{font-weight:500;font-variant-numeric:tabular-nums}
+li .amt.neg{color:var(--warn)}
+li .del{background:none;border:0;color:var(--muted);font:inherit;padding:6px;cursor:pointer}
+.empty{color:var(--muted);padding:16px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Money Tracker</h1>
+
+  <section class="hero" aria-live="polite">
+    <div class="lbl">Left over</div>
+    <div class="big" id="left">₱0.00</div>
+    <div class="bar" aria-hidden="true"><div class="set" id="barSet"></div><div class="left" id="barLeft"></div></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--set)"></i>Wishlist <b id="set">₱0.00</b></span>
+      <span><i class="dot" style="background:var(--accent)"></i>Total <b id="total">₱0.00</b></span>
+    </div>
+    <p class="alert" id="alert" hidden>Your wishlist costs more than you have.</p>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t0" aria-selected="true">Money</button>
+    <button role="tab" id="t1" aria-selected="false">Wishlist</button>
+  </div>
+
+  <form id="form" autocomplete="off">
+    <input id="label" type="text" maxlength="60" placeholder="Note (e.g. Paycheck)">
+    <input id="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount">
+    <div class="actions" id="actions"></div>
+  </form>
+
+  <ul id="list"></ul>
+</main>
+
+<script>
+(function(){
+  var KEY = "money-tracker-v1";
+  var state = { tx: [], goals: [] };
+  var tab = 0;
+
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) { var p = JSON.parse(raw); state.tx = p.tx || []; state.goals = p.goals || []; }
+  } catch (e) {}
+
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function money(v){ return (v < 0 ? "-" : "") + "₱" + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function sum(a){ return a.reduce(function(s, x){ return s + x.amount; }, 0); }
+  var $ = function(id){ return document.getElementById(id); };
+
+  function render(){
+    var total = sum(state.tx), set = sum(state.goals), left = total - set;
+    $("total").textContent = money(total);
+    $("set").textContent = money(set);
+    $("left").textContent = money(left);
+    $("left").className = "big" + (left < 0 ? " neg" : "");
+    $("alert").hidden = left >= 0;
+    var base = Math.max(total, set, 0.01);
+    $("barSet").style.width = Math.min(100, Math.max(0, set / base * 100)) + "%";
+    $("barLeft").style.width = Math.min(100, Math.max(0, left / base * 100)) + "%";
+
+    $("t0").setAttribute("aria-selected", tab === 0);
+    $("t1").setAttribute("aria-selected", tab === 1);
+    $("label").placeholder = tab === 0 ? "Note (e.g. Paycheck, Groceries)" : "What do you want to buy?";
+
+    var actions = $("actions");
+    actions.textContent = "";
+    var defs = tab === 0 ? [["Add income", 1, ""], ["Add expense", -1, " alt"]] : [["Add to wishlist", 1, ""]];
+    defs.forEach(function(d){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "btn" + d[2]; b.textContent = d[0];
+      b.addEventListener("click", function(){ add(d[1]); });
+      actions.appendChild(b);
+    });
+
+    var items = tab === 0 ? state.tx : state.goals;
+    var ul = $("list");
+    ul.textContent = "";
+    if (!items.length) {
+      var e = document.createElement("li");
+      e.className = "empty";
+      e.textContent = tab === 0 ? "Add your first income or expense above." : "Add something you want to buy above.";
+      ul.appendChild(e);
+    }
+    items.forEach(function(it, i){
+      var li = document.createElement("li");
+      var n = document.createElement("span"); n.className = "name"; n.textContent = it.label;
+      var a = document.createElement("span"); a.className = "amt" + (tab === 0 && it.amount < 0 ? " neg" : "");
+      a.textContent = (tab === 0 && it.amount > 0 ? "+" : "") + money(it.amount);
+      var d = document.createElement("button"); d.className = "del"; d.type = "button"; d.textContent = "Delete";
+      d.setAttribute("aria-label", "Delete " + it.label);
+      d.addEventListener("click", function(){ items.splice(i, 1); save(); render(); });
+      li.appendChild(n); li.appendChild(a); li.appendChild(d);
+      ul.appendChild(li);
+    });
+  }
+
+  function add(sign){
+    var amt = parseFloat($("amount").value);
+    if (!(amt > 0)) { $("amount").focus(); return; }
+    var entry = { label: $("label").value.trim() || "Untitled", amount: amt * sign };
+    (tab === 0 ? state.tx : state.goals).unshift(entry);
+    $("label").value = ""; $("amount").value = "";
+    save(); render();
+  }
+
+  $("form").addEventListener("submit", function(e){ e.preventDefault(); add(1); });
+  $("t0").addEventListener("click", function(){ tab = 0; render(); });
+  $("t1").addEventListener("click", function(){ tab = 1; render(); });
+  render();
+})();
+</script>
+</body>
+</html>
